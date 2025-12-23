@@ -550,7 +550,7 @@ void parseproc()
 	}
 
 	if (fclose(arpf)) {
-		syslog(LOG_INFO, "Error during ARP table close: %s", strerror(errno));
+		syslog(LOG_INFO, "Error closing ARP table file: %s", strerror(errno));
 	}
 }
 

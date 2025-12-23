@@ -70,8 +70,15 @@ int arp_recv(int sock, ether_arp_frame *frame)
 {
 	int nread;
 
-	/* Receive directly into the frame structure */
+	/* Receive directly into the frame structure 
+	 * recv() will not write more than sizeof(ether_arp_frame) bytes 
+	 * when we specify that as the buffer size */
 	nread = recv(sock, frame, sizeof(ether_arp_frame), 0);
+
+	/* Cap nread to frame size for safety (though recv should already limit it) */
+	if (nread > (int)sizeof(ether_arp_frame)) {
+		nread = sizeof(ether_arp_frame);
+	}
 
 	/* Zero out any remaining bytes if we received less than expected */
 	if (nread > 0 && nread < (int)sizeof(ether_arp_frame)) {
