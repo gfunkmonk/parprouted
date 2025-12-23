@@ -1,7 +1,7 @@
 ifdef DEBUG
 CFLAGS  	= -g -DDEBUG
 else
-CFLAGS  	= -Os -flto -DNDEBUG
+CFLAGS  	= -O3 -flto -DNDEBUG
 LDFLAGS 	= -s -w
 endif
 
