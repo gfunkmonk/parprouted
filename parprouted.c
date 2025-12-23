@@ -521,6 +521,7 @@ void parseproc()
 
 void cleanup(void *arg)
 {
+	(void)arg; /* Unused parameter */
 	syslog(LOG_INFO, "Received signal; cleaning up.");
 //	for (i=0; i <= last_thread_idx; i++) {
 //		pthread_cancel(my_threads[i]);
@@ -536,11 +537,13 @@ void cleanup(void *arg)
 
 void sighandler(int sig)
 {
+	(void)sig; /* Unused parameter */
 	perform_shutdown = true;
 }
 
 void *main_thread(void *arg)
 {
+	(void)arg; /* Unused parameter */
 	time_t last_refresh = 0, last_sync = 0;
 
 	signal(SIGINT, sighandler);

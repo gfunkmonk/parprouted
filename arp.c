@@ -90,7 +90,10 @@ int arp_recv(int sock, ether_arp_frame *frame)
 
 void arp_reply(ether_arp_frame *reqframe, struct sockaddr_ll *ifs) 
 {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Waddress-of-packed-member"
 	struct ether_arp *arp = &reqframe->arp;
+#pragma GCC diagnostic pop
 	unsigned char ip[4];
 	int sock;
 
@@ -138,7 +141,10 @@ void arp_reply(ether_arp_frame *reqframe, struct sockaddr_ll *ifs)
 void arp_req(char *ifname, struct in_addr remaddr, int gratuitous)
 {
 	ether_arp_frame frame;
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Waddress-of-packed-member"
 	struct ether_arp *arp = &frame.arp;
+#pragma GCC diagnostic pop
 	int sock, i;
 	struct sockaddr_ll ifs;
 	struct ifreq ifr;
