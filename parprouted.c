@@ -145,7 +145,21 @@ int remove_other_routes(ARPTAB_ENTRY * entry)
 	return removed;
 }
 
-/* Helper function to send netlink request and receive response */
+/* Helper function to send netlink route request and receive response
+ * 
+ * Performs route add/delete operations using netlink instead of system() calls.
+ * This is much faster as it avoids fork/exec overhead.
+ * 
+ * Parameters:
+ *   cmd - RTM_NEWROUTE to add, RTM_DELROUTE to delete
+ *   ipaddr - IP address for the route
+ *   ifname - network interface name
+ *   metric - route metric/priority
+ * 
+ * Returns:
+ *   0 on success
+ *   negative errno value on error (e.g., -EEXIST, -ESRCH)
+ */
 static int netlink_route_op(int cmd, struct in_addr *ipaddr, const char *ifname, unsigned int metric)
 {
 	struct {
@@ -334,7 +348,21 @@ void route_check(ARPTAB_ENTRY* entry) {
 	}
 }
 
-/* Helper function for netlink address operations */
+/* Helper function for netlink address add/delete operations
+ * 
+ * Performs IP address add/delete operations using netlink instead of system() calls.
+ * This is much faster as it avoids fork/exec overhead.
+ * 
+ * Parameters:
+ *   cmd - RTM_NEWADDR to add, RTM_DELADDR to delete
+ *   ipaddr - IP address to add/remove
+ *   bcast - broadcast address (can be NULL for delete operations)
+ *   ifname - network interface name
+ * 
+ * Returns:
+ *   0 on success
+ *   negative errno value on error (e.g., -EEXIST, -EADDRNOTAVAIL)
+ */
 static int netlink_addr_op(int cmd, struct in_addr *ipaddr, struct in_addr *bcast, const char *ifname)
 {
 	struct {

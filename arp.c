@@ -433,7 +433,7 @@ void *arp(const char *ifname)
 			FD_ZERO(&readfds);
 			FD_SET(sock, &readfds);
 			tv.tv_sec = 0;
-			tv.tv_usec = 10000; /* 10ms timeout */
+			tv.tv_usec = ARP_RECV_TIMEOUT_MS * 1000; /* Convert ms to microseconds */
 			
 			int ret = select(sock + 1, &readfds, NULL, NULL, &tv);
 			if (ret < 0) {

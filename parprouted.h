@@ -23,6 +23,7 @@
 #define ARP_TABLE_ENTRY_TIMEOUT 60 /* seconds */
 #define ROUTE_CMD_LEN 255
 #define SLEEPTIME 1000000 /* microseconds */
+#define ARP_RECV_TIMEOUT_MS 10 /* milliseconds for select() timeout in ARP receive loop */
 #define REFRESHTIME 50 /* seconds */
 #define SYNCTIME 30 /* seconds */
 #define MAX_IFACES 10
