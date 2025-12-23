@@ -21,7 +21,7 @@
 #include <getopt.h>
 #include <linux/if.h>
 #include <ifaddrs.h>
-#include <cstdio>
+
 #include "parprouted.h"
 
 char *progname;
@@ -688,7 +688,7 @@ int main (int argc, char **argv)
 		} else {
                 if (child_pid > 0)
 			exit(0);
-
+                }
 		/* create our own session */
 		setsid();
 

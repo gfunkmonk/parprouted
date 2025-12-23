@@ -23,8 +23,6 @@
 #include <linux/if_packet.h>
 #include <sys/ioctl.h>
 
-#include <cstdio>
-
 #include "parprouted.h"
 
 typedef struct _ether_arp_frame { 
