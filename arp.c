@@ -68,18 +68,13 @@ int ipaddr_known(ARPTAB_ENTRY *list, struct in_addr addr, char *ifname)
 
 int arp_recv(int sock, ether_arp_frame *frame) 
 {
-	char packet[4096];
 	int nread;
 
-	nread=recv(sock, &packet, sizeof(packet), 0);
+	/* Receive directly into the frame structure */
+	nread = recv(sock, frame, sizeof(ether_arp_frame), 0);
 
-	if (nread > (int)sizeof(ether_arp_frame)) {
-		nread=sizeof(ether_arp_frame);
-	}
-
-	memcpy(frame, &packet, nread);
-
-	if (nread < (int)sizeof(ether_arp_frame)) {
+	/* Zero out any remaining bytes if we received less than expected */
+	if (nread > 0 && nread < (int)sizeof(ether_arp_frame)) {
 		memset(((char*)frame) + nread, 0, sizeof(ether_arp_frame) - nread);
 	}
 

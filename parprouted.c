@@ -429,8 +429,11 @@ void parseproc()
 
 	/* Parse /proc/net/arp table */
 
-	if ((arpf = fopen(PROC_ARP, "re")) == NULL)
+	arpf = fopen(PROC_ARP, "re");
+	if (arpf == NULL) {
 		syslog(LOG_INFO, "Error during ARP table open: %s", strerror(errno));
+		return;
+	}
 
 	while (!feof(arpf)) {
 
@@ -440,8 +443,13 @@ void parseproc()
 			else
 				syslog(LOG_INFO, "Error during ARP table open: %s", strerror(errno));
 		} else {
-			if (firstline) { firstline=false; continue; }
-			if (debug && verbose) printf("ARP line: %s", line);
+			if (firstline) {
+				firstline = false;
+				continue;
+			}
+			if (debug && verbose) {
+				printf("ARP line: %s", line);
+			}
 			
 			/* IP address */
 			ip=strtok(line, " ");
@@ -462,46 +470,58 @@ void parseproc()
 
 			/* Device */
 			dev=strtok(NULL, " ");
-			if (dev[strlen(dev)-1] == '\n') { dev[strlen(dev)-1] = '\0'; }
+			if (dev[strlen(dev)-1] == '\n') {
+				dev[strlen(dev)-1] = '\0';
+			}
 			
 			/* Incomplete ARP entries with MAC 00:00:00:00:00:00
 			 * Incomplete entries having flag 0x0 */
 			incomplete = strcmp(mac, "00:00:00:00:00:00") == 0 || strcmp(flags, "0x0") == 0;
 			
 			/* Ignore ARP entries for unhandled ifaces */
-			for (i=0; i <= last_iface_idx; i++)
-				if (strcmp(ifaces[i], dev) == 0)
+			for (i=0; i <= last_iface_idx; i++) {
+				if (strcmp(ifaces[i], dev) == 0) {
 					break;
+				}
+			}
 			if (i>last_iface_idx) {
-				if (debug && verbose) printf("Ignoring interface %s\n", dev);
+				if (debug && verbose) {
+					printf("Ignoring interface %s\n", dev);
+				}
 				continue;
 			}
 			
 			/* if the IP address is marked as undiscovered and does not exist in arptab then
 			 * send an ARP request to all ifaces */
 			if (incomplete && !findentry(ipaddr)) {
-				if (debug) printf("ARP entry %s(%s) is incomplete, requesting on all interfaces\n", ip, dev);
-				for (i=0; i <= last_iface_idx; i++)
+				if (debug) {
+					printf("ARP entry %s(%s) is incomplete, requesting on all interfaces\n", ip, dev);
+				}
+				for (i=0; i <= last_iface_idx; i++) {
 					arp_req(ifaces[i], ipaddr, 0);
+				}
 			}
 
 			entry=replace_entry(ipaddr, dev);
 
-			if (entry->incomplete != incomplete && debug)
+			if (entry->incomplete != incomplete && debug) {
 				printf("ARP entry %s(%s) now %scomplete\n", ip, dev, incomplete ? "in" : "");
+			}
 
 			entry->ipaddr_ia.s_addr = ipaddr.s_addr;
 			entry->incomplete = incomplete;
 
-			if (strlen(mac) < ARP_TABLE_ENTRY_LEN)
+			if (strlen(mac) < ARP_TABLE_ENTRY_LEN) {
 				strncpy(entry->hwaddr, mac, ARP_TABLE_ENTRY_LEN);
-			else
+			} else {
 				syslog(LOG_INFO, "Error during ARP table parsing");
+			}
 
-			if (strlen(dev) < ARP_TABLE_ENTRY_LEN)
+			if (strlen(dev) < ARP_TABLE_ENTRY_LEN) {
 				strncpy(entry->ifname, dev, ARP_TABLE_ENTRY_LEN);
-			else
+			} else {
 				syslog(LOG_INFO, "Error during ARP table parsing");
+			}
 
 			/* do not add routes for incomplete entries */
 			if (debug && entry->want_route != !incomplete) {
@@ -529,8 +549,9 @@ void parseproc()
 		}
 	}
 
-	if (fclose(arpf))
-		syslog(LOG_INFO, "Error during ARP table open: %s", strerror(errno));
+	if (fclose(arpf)) {
+		syslog(LOG_INFO, "Error during ARP table close: %s", strerror(errno));
+	}
 }
 
 void cleanup(void *arg)
