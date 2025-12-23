@@ -19,8 +19,9 @@
  */
 
 #include <getopt.h>
-#include <linux/if.h>
+#include <net/if.h>
 #include <ifaddrs.h>
+#include <linux/rtnetlink.h>
 
 #include "parprouted.h"
 
@@ -134,48 +135,144 @@ int remove_other_routes(ARPTAB_ENTRY * entry)
 	return removed;
 }
 
+/* Helper function to send netlink request and receive response */
+static int netlink_route_op(int cmd, struct in_addr *ipaddr, const char *ifname, unsigned int metric)
+{
+	struct {
+		struct nlmsghdr n;
+		struct rtmsg r;
+		char buf[1024];
+	} req = {
+		.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg)),
+		.n.nlmsg_flags = NLM_F_REQUEST,
+		.n.nlmsg_type = cmd,
+		.r.rtm_family = AF_INET,
+		.r.rtm_table = RT_TABLE_MAIN,
+		.r.rtm_scope = RT_SCOPE_LINK,
+		.r.rtm_protocol = RTPROT_BOOT,
+		.r.rtm_type = RTN_UNICAST,
+		.r.rtm_dst_len = 32,
+	};
+
+	if (cmd == RTM_NEWROUTE) {
+		req.n.nlmsg_flags |= NLM_F_CREATE | NLM_F_EXCL;
+	}
+
+	/* Add destination address */
+	struct rtattr *rta = (struct rtattr *)(((char *)&req) + NLMSG_ALIGN(req.n.nlmsg_len));
+	rta->rta_type = RTA_DST;
+	rta->rta_len = RTA_LENGTH(sizeof(*ipaddr));
+	memcpy(RTA_DATA(rta), ipaddr, sizeof(*ipaddr));
+	req.n.nlmsg_len = NLMSG_ALIGN(req.n.nlmsg_len) + RTA_LENGTH(sizeof(*ipaddr));
+
+	/* Add output interface */
+	unsigned int ifindex = if_nametoindex(ifname);
+	if (ifindex == 0) {
+		return -1;
+	}
+	rta = (struct rtattr *)(((char *)&req) + NLMSG_ALIGN(req.n.nlmsg_len));
+	rta->rta_type = RTA_OIF;
+	rta->rta_len = RTA_LENGTH(sizeof(ifindex));
+	memcpy(RTA_DATA(rta), &ifindex, sizeof(ifindex));
+	req.n.nlmsg_len = NLMSG_ALIGN(req.n.nlmsg_len) + RTA_LENGTH(sizeof(ifindex));
+
+	/* Add metric/priority */
+	rta = (struct rtattr *)(((char *)&req) + NLMSG_ALIGN(req.n.nlmsg_len));
+	rta->rta_type = RTA_PRIORITY;
+	rta->rta_len = RTA_LENGTH(sizeof(metric));
+	memcpy(RTA_DATA(rta), &metric, sizeof(metric));
+	req.n.nlmsg_len = NLMSG_ALIGN(req.n.nlmsg_len) + RTA_LENGTH(sizeof(metric));
+
+	int fd = socket(AF_NETLINK, SOCK_RAW | SOCK_CLOEXEC, NETLINK_ROUTE);
+	if (fd < 0) {
+		return -1;
+	}
+
+	struct sockaddr_nl nladdr = {
+		.nl_family = AF_NETLINK,
+	};
+
+	if (sendto(fd, &req, req.n.nlmsg_len, 0, (struct sockaddr *)&nladdr, sizeof(nladdr)) < 0) {
+		close(fd);
+		return -1;
+	}
+
+	/* Receive response to check for errors */
+	char buf[4096];
+	struct iovec iov = { buf, sizeof(buf) };
+	struct msghdr msg = {
+		.msg_name = &nladdr,
+		.msg_namelen = sizeof(nladdr),
+		.msg_iov = &iov,
+		.msg_iovlen = 1,
+	};
+
+	ssize_t len = recvmsg(fd, &msg, 0);
+	close(fd);
+
+	if (len < 0) {
+		return -1;
+	}
+
+	struct nlmsghdr *nh = (struct nlmsghdr *)buf;
+	if (!NLMSG_OK(nh, (size_t)len)) {
+		return -1;
+	}
+
+	if (nh->nlmsg_type == NLMSG_ERROR) {
+		struct nlmsgerr *err = (struct nlmsgerr *)NLMSG_DATA(nh);
+		return err->error;
+	}
+
+	return 0;
+}
+
 /* Remove route from kernel */
 bool route_remove(ARPTAB_ENTRY* entry)
 {
-	char routecmd_str[ROUTE_CMD_LEN];
 	bool success = false;
-
-	if (snprintf(routecmd_str, ROUTE_CMD_LEN-1,
-			"/sbin/ip route del %s/32 metric 50 dev %s scope link",
-			inet_ntop(AF_INET, &entry->ipaddr_ia, NTOP_BUFFER_PARAMS), entry->ifname) <= ROUTE_CMD_LEN-1) {
-		if (system(routecmd_str) != 0) {
-			syslog(LOG_INFO, "'%s' unsuccessful!", routecmd_str);
-		} else {
-			if (debug) {
-				printf("%s success\n", routecmd_str);
-			}
-			success = true;
-			entry->route_added = false;
+	int ret = netlink_route_op(RTM_DELROUTE, &entry->ipaddr_ia, entry->ifname, 50);
+	
+	if (ret == 0 || ret == -ESRCH) { /* -ESRCH means route doesn't exist, which is OK */
+		if (debug) {
+			printf("Route removed for %s dev %s\n",
+				inet_ntop(AF_INET, &entry->ipaddr_ia, NTOP_BUFFER_PARAMS), entry->ifname);
 		}
+		success = true;
+		entry->route_added = false;
+	} else {
+		syslog(LOG_INFO, "Failed to remove route for %s dev %s: %s",
+			inet_ntop(AF_INET, &entry->ipaddr_ia, NTOP_BUFFER_PARAMS),
+			entry->ifname, strerror(-ret));
 	}
+	
 	return success;
 }
 
 /* Add route into kernel */
 bool route_add(ARPTAB_ENTRY* entry)
 {
-	char routecmd_str[ROUTE_CMD_LEN];
 	bool success = false;
-
-	if (snprintf(routecmd_str, ROUTE_CMD_LEN-1,
-			"/sbin/ip route add %s/32 metric 50 dev %s scope link",
-			inet_ntop(AF_INET, &entry->ipaddr_ia, NTOP_BUFFER_PARAMS), entry->ifname) <= ROUTE_CMD_LEN-1) {
-		if (system(routecmd_str) != 0) {
-			syslog(LOG_INFO, "'%s' unsuccessful, will try to remove!", routecmd_str);
-			route_remove(entry);
-		} else {
-			if (debug) {
-				printf("%s success\n", routecmd_str);
-			}
-			success = true;
-			entry->route_added = true;
+	int ret = netlink_route_op(RTM_NEWROUTE, &entry->ipaddr_ia, entry->ifname, 50);
+	
+	if (ret == 0) {
+		if (debug) {
+			printf("Route added for %s dev %s\n",
+				inet_ntop(AF_INET, &entry->ipaddr_ia, NTOP_BUFFER_PARAMS), entry->ifname);
 		}
+		success = true;
+		entry->route_added = true;
+	} else if (ret == -EEXIST) {
+		/* Route already exists, try to remove and re-add */
+		syslog(LOG_INFO, "Route exists for %s dev %s, will try to remove!",
+			inet_ntop(AF_INET, &entry->ipaddr_ia, NTOP_BUFFER_PARAMS), entry->ifname);
+		route_remove(entry);
+	} else {
+		syslog(LOG_INFO, "Failed to add route for %s dev %s: %s",
+			inet_ntop(AF_INET, &entry->ipaddr_ia, NTOP_BUFFER_PARAMS),
+			entry->ifname, strerror(-ret));
 	}
+	
 	return success;
 }
 
@@ -227,48 +324,144 @@ void route_check(ARPTAB_ENTRY* entry) {
 	}
 }
 
-bool address_remove(IPTAB_ENTRY* entry) {
-	char addresscmd_str[ROUTE_CMD_LEN];
-	bool success = false;
+/* Helper function for netlink address operations */
+static int netlink_addr_op(int cmd, struct in_addr *ipaddr, struct in_addr *bcast, const char *ifname)
+{
+	struct {
+		struct nlmsghdr n;
+		struct ifaddrmsg ifa;
+		char buf[1024];
+	} req = {
+		.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifaddrmsg)),
+		.n.nlmsg_flags = NLM_F_REQUEST,
+		.n.nlmsg_type = cmd,
+		.ifa.ifa_family = AF_INET,
+		.ifa.ifa_prefixlen = 32,
+	};
 
-	if (snprintf(addresscmd_str, ROUTE_CMD_LEN-1,
-			"/sbin/ip addr del %s/32 dev %s",
-			inet_ntop(AF_INET, &entry->ipaddr_ia, NTOP_BUFFER_PARAMS),
-			entry->ifname) <= ROUTE_CMD_LEN-1) {
-		if (system(addresscmd_str) != 0) {
-			syslog(LOG_INFO, "'%s' unsuccessful!", addresscmd_str);
-		} else {
-			if (debug) {
-				printf("%s success\n", addresscmd_str);
-			}
-			success = true;
-			entry->ipaddr_ia.s_addr = 0;
-		}
+	if (cmd == RTM_NEWADDR) {
+		req.n.nlmsg_flags |= NLM_F_CREATE | NLM_F_EXCL;
 	}
+
+	unsigned int ifindex = if_nametoindex(ifname);
+	if (ifindex == 0) {
+		return -1;
+	}
+	req.ifa.ifa_index = ifindex;
+
+	/* Add local address */
+	struct rtattr *rta = (struct rtattr *)(((char *)&req) + NLMSG_ALIGN(req.n.nlmsg_len));
+	rta->rta_type = IFA_LOCAL;
+	rta->rta_len = RTA_LENGTH(sizeof(*ipaddr));
+	memcpy(RTA_DATA(rta), ipaddr, sizeof(*ipaddr));
+	req.n.nlmsg_len = NLMSG_ALIGN(req.n.nlmsg_len) + RTA_LENGTH(sizeof(*ipaddr));
+
+	/* Add address (same as local for point-to-point) */
+	rta = (struct rtattr *)(((char *)&req) + NLMSG_ALIGN(req.n.nlmsg_len));
+	rta->rta_type = IFA_ADDRESS;
+	rta->rta_len = RTA_LENGTH(sizeof(*ipaddr));
+	memcpy(RTA_DATA(rta), ipaddr, sizeof(*ipaddr));
+	req.n.nlmsg_len = NLMSG_ALIGN(req.n.nlmsg_len) + RTA_LENGTH(sizeof(*ipaddr));
+
+	/* Add broadcast address if adding */
+	if (cmd == RTM_NEWADDR && bcast) {
+		rta = (struct rtattr *)(((char *)&req) + NLMSG_ALIGN(req.n.nlmsg_len));
+		rta->rta_type = IFA_BROADCAST;
+		rta->rta_len = RTA_LENGTH(sizeof(*bcast));
+		memcpy(RTA_DATA(rta), bcast, sizeof(*bcast));
+		req.n.nlmsg_len = NLMSG_ALIGN(req.n.nlmsg_len) + RTA_LENGTH(sizeof(*bcast));
+	}
+
+	int fd = socket(AF_NETLINK, SOCK_RAW | SOCK_CLOEXEC, NETLINK_ROUTE);
+	if (fd < 0) {
+		return -1;
+	}
+
+	struct sockaddr_nl nladdr = {
+		.nl_family = AF_NETLINK,
+	};
+
+	if (sendto(fd, &req, req.n.nlmsg_len, 0, (struct sockaddr *)&nladdr, sizeof(nladdr)) < 0) {
+		close(fd);
+		return -1;
+	}
+
+	/* Receive response */
+	char buf[4096];
+	struct iovec iov = { buf, sizeof(buf) };
+	struct msghdr msg = {
+		.msg_name = &nladdr,
+		.msg_namelen = sizeof(nladdr),
+		.msg_iov = &iov,
+		.msg_iovlen = 1,
+	};
+
+	ssize_t len = recvmsg(fd, &msg, 0);
+	close(fd);
+
+	if (len < 0) {
+		return -1;
+	}
+
+	struct nlmsghdr *nh = (struct nlmsghdr *)buf;
+	if (!NLMSG_OK(nh, (size_t)len)) {
+		return -1;
+	}
+
+	if (nh->nlmsg_type == NLMSG_ERROR) {
+		struct nlmsgerr *err = (struct nlmsgerr *)NLMSG_DATA(nh);
+		return err->error;
+	}
+
+	return 0;
+}
+
+bool address_remove(IPTAB_ENTRY* entry) {
+	bool success = false;
+	int ret = netlink_addr_op(RTM_DELADDR, &entry->ipaddr_ia, NULL, entry->ifname);
+	
+	if (ret == 0 || ret == -EADDRNOTAVAIL) { /* -EADDRNOTAVAIL means address doesn't exist */
+		if (debug) {
+			printf("Address removed %s dev %s\n",
+				inet_ntop(AF_INET, &entry->ipaddr_ia, NTOP_BUFFER_PARAMS), entry->ifname);
+		}
+		success = true;
+		entry->ipaddr_ia.s_addr = 0;
+	} else {
+		syslog(LOG_INFO, "Failed to remove address %s dev %s: %s",
+			inet_ntop(AF_INET, &entry->ipaddr_ia, NTOP_BUFFER_PARAMS),
+			entry->ifname, strerror(-ret));
+	}
+	
 	return success;
 }
 
 bool address_add(IPTAB_ENTRY* entry) {
-	char addresscmd_str[ROUTE_CMD_LEN];
 	bool success = false;
-
-	if (snprintf(addresscmd_str, ROUTE_CMD_LEN-1,
-			"/sbin/ip addr add %s/32 broadcast %s dev %s",
-			inet_ntop(AF_INET, &entry->ipaddr_ia, NTOP_BUFFER_PARAMS),
-			inet_ntop(AF_INET, &entry->ipaddr_ba, NTOP_BUFFER_PARAMS),
-			entry->ifname) <= ROUTE_CMD_LEN-1) {
-		if (system(addresscmd_str) != 0) {
-			// RTNETLINK answers: File exists
-			// Determine if address already exists.. and return success if so..
-			syslog(LOG_INFO, "'%s' unsuccessful!", addresscmd_str);
-			entry->ipaddr_ia.s_addr = 0;
-		} else {
-			if (debug) {
-				printf("%s success\n", addresscmd_str);
-			}
-			success = true;
+	int ret = netlink_addr_op(RTM_NEWADDR, &entry->ipaddr_ia, &entry->ipaddr_ba, entry->ifname);
+	
+	if (ret == 0) {
+		if (debug) {
+			printf("Address added %s broadcast %s dev %s\n",
+				inet_ntop(AF_INET, &entry->ipaddr_ia, NTOP_BUFFER_PARAMS),
+				inet_ntop(AF_INET, &entry->ipaddr_ba, NTOP_BUFFER_PARAMS),
+				entry->ifname);
 		}
+		success = true;
+	} else if (ret == -EEXIST) {
+		/* Address already exists - this is OK for our purposes */
+		if (debug) {
+			printf("Address %s already exists on %s\n",
+				inet_ntop(AF_INET, &entry->ipaddr_ia, NTOP_BUFFER_PARAMS), entry->ifname);
+		}
+		success = true;
+	} else {
+		syslog(LOG_INFO, "Failed to add address %s dev %s: %s",
+			inet_ntop(AF_INET, &entry->ipaddr_ia, NTOP_BUFFER_PARAMS),
+			entry->ifname, strerror(-ret));
+		entry->ipaddr_ia.s_addr = 0;
 	}
+	
 	return success;
 }
 
@@ -471,8 +664,10 @@ void parseproc()
 
 			/* Device */
 			dev=strtok(NULL, " ");
-			if (dev[strlen(dev)-1] == '\n') {
-				dev[strlen(dev)-1] = '\0';
+			size_t dev_len = strlen(dev);
+			if (dev_len > 0 && dev[dev_len-1] == '\n') {
+				dev[dev_len-1] = '\0';
+				dev_len--;
 			}
 			
 			/* Incomplete ARP entries with MAC 00:00:00:00:00:00
@@ -512,14 +707,15 @@ void parseproc()
 			entry->ipaddr_ia.s_addr = ipaddr.s_addr;
 			entry->incomplete = incomplete;
 
-			if (strlen(mac) < ARP_TABLE_ENTRY_LEN) {
-				strncpy(entry->hwaddr, mac, ARP_TABLE_ENTRY_LEN);
+			size_t mac_len = strlen(mac);
+			if (mac_len < ARP_TABLE_ENTRY_LEN) {
+				memcpy(entry->hwaddr, mac, mac_len + 1);
 			} else {
 				syslog(LOG_INFO, "Error during ARP table parsing");
 			}
 
-			if (strlen(dev) < ARP_TABLE_ENTRY_LEN) {
-				strncpy(entry->ifname, dev, ARP_TABLE_ENTRY_LEN);
+			if (dev_len < ARP_TABLE_ENTRY_LEN) {
+				memcpy(entry->ifname, dev, dev_len + 1);
 			} else {
 				syslog(LOG_INFO, "Error during ARP table parsing");
 			}
