@@ -52,12 +52,16 @@ IPTAB_ENTRY **iptab;
 ARPTAB_ENTRY **arptab;
 pthread_mutex_t arptab_mutex;
 
-ARPTAB_ENTRY * replace_entry(struct in_addr ipaddr, char *dev) 
+ARPTAB_ENTRY * replace_entry(struct in_addr ipaddr, const char *dev) 
 {
 	ARPTAB_ENTRY * cur_entry=*arptab;
 	ARPTAB_ENTRY * prev_entry=NULL;
+	uint32_t target_ip = ipaddr.s_addr;
 
-	while (cur_entry != NULL && (ipaddr.s_addr != cur_entry->ipaddr_ia.s_addr || (strcmp(dev, cur_entry->ifname) != 0))) {
+	while (cur_entry != NULL) {
+		if (target_ip == cur_entry->ipaddr_ia.s_addr && strcmp(dev, cur_entry->ifname) == 0) {
+			break;
+		}
 		prev_entry = cur_entry;
 		cur_entry = cur_entry->next;
 	}
@@ -88,12 +92,16 @@ ARPTAB_ENTRY * replace_entry(struct in_addr ipaddr, char *dev)
 bool findentry(struct in_addr ipaddr)
 {
 	ARPTAB_ENTRY * cur_entry=*arptab;
+	uint32_t target_ip = ipaddr.s_addr;
 
-	while (cur_entry != NULL && ipaddr.s_addr != cur_entry->ipaddr_ia.s_addr) {
+	while (cur_entry != NULL) {
+		if (target_ip == cur_entry->ipaddr_ia.s_addr) {
+			return true;
+		}
 		cur_entry = cur_entry->next;
 	}
 
-	return cur_entry != NULL;
+	return false;
 }
 
 /* Remove all other entries in arptab using the same ipaddr */
@@ -102,8 +110,10 @@ int remove_other_routes(ARPTAB_ENTRY * entry)
 	ARPTAB_ENTRY * other_entry;
 	int removed = 0;
 	bool conflicted = false;
+	uint32_t target_ip = entry->ipaddr_ia.s_addr;
+	
 	for (other_entry=*arptab; other_entry != NULL; other_entry = other_entry->next) {
-		if (entry != other_entry && entry->ipaddr_ia.s_addr == other_entry->ipaddr_ia.s_addr) {
+		if (entry != other_entry && target_ip == other_entry->ipaddr_ia.s_addr) {
 			if (debug) {
 				printf("Marking entry %s(%s) for removal %s\n", 
 						inet_ntop(AF_INET, &other_entry->ipaddr_ia, NTOP_BUFFER_PARAMS),

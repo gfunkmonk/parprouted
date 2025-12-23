@@ -140,7 +140,7 @@ void arp_reply(ether_arp_frame *reqframe, struct sockaddr_ll *ifs)
 
 /* Send ARP who-has request */
 
-void arp_req(char *ifname, struct in_addr remaddr, int gratuitous)
+void arp_req(const char *ifname, struct in_addr remaddr, int gratuitous)
 {
 	ether_arp_frame frame;
 #pragma GCC diagnostic push
@@ -236,15 +236,26 @@ int rq_add(ether_arp_frame *req_frame, struct sockaddr_ll *req_if)
 
 	pthread_mutex_lock(&req_queue_mutex);
 
+	/* Quick duplicate check: compare IP address and interface first */
+	uint32_t target_ip;
+	memcpy(&target_ip, req_frame->arp.arp_tpa, sizeof(target_ip));
+	int ifindex = req_if->sll_ifindex;
+
 	for (RQ_ENTRY *entry = req_queue; entry != NULL; entry = entry->next) {
-		if (memcmp(&req_frame->arp, &entry->req_frame.arp, sizeof(req_frame->arp)) == 0 &&
-				memcmp(req_if, &entry->req_if, sizeof(struct sockaddr_ll)) == 0) {
-			if (debug && verbose) {
-				printf("Skip adding request %s to queue since it already has a duplicate entry pending..\n",
-						inet_ntop(AF_INET, req_frame->arp.arp_tpa, NTOP_BUFFER_PARAMS));
+		uint32_t entry_ip;
+		memcpy(&entry_ip, entry->req_frame.arp.arp_tpa, sizeof(entry_ip));
+		
+		/* Fast path: check IP and interface index first */
+		if (target_ip == entry_ip && ifindex == entry->req_if.sll_ifindex) {
+			/* Full comparison as fallback */
+			if (memcmp(&req_frame->arp, &entry->req_frame.arp, sizeof(req_frame->arp)) == 0) {
+				if (debug && verbose) {
+					printf("Skip adding request %s to queue since it already has a duplicate entry pending..\n",
+							inet_ntop(AF_INET, req_frame->arp.arp_tpa, NTOP_BUFFER_PARAMS));
+				}
+				pthread_mutex_unlock(&req_queue_mutex);
+				return 2;
 			}
-			pthread_mutex_unlock(&req_queue_mutex);
-			return 2;
 		}
 	}
 
@@ -360,7 +371,7 @@ void remove_arp(struct in_addr ipaddr, const char* ifname)
 	close(arpsock);
 }
 
-void *arp(char *ifname) 
+void *arp(const char *ifname) 
 {
 	int sock,i;
 	struct sockaddr_ll ifs;
@@ -415,8 +426,27 @@ void *arp(char *ifname)
 
 		do {
 			pthread_testcancel();
-			/* Sleep a bit in order not to overload the system */
-			usleep(300);
+			
+			/* Use select to wait for data with timeout instead of busy-waiting */
+			fd_set readfds;
+			struct timeval tv;
+			FD_ZERO(&readfds);
+			FD_SET(sock, &readfds);
+			tv.tv_sec = 0;
+			tv.tv_usec = 10000; /* 10ms timeout */
+			
+			int ret = select(sock + 1, &readfds, NULL, NULL, &tv);
+			if (ret < 0) {
+				if (errno == EINTR) {
+					continue;
+				}
+				syslog(LOG_ERR, "%s() error: %s: %s", __FUNCTION__, "select", strerror(errno));
+				break;
+			}
+			
+			if (ret == 0 || !FD_ISSET(sock, &readfds)) {
+				continue; /* Timeout, no data available */
+			}
 
 			if (arp_recv(sock, &frame) <= 0)
 				continue;

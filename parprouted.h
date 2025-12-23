@@ -76,8 +76,8 @@ extern char * ifaces[MAX_IFACES];
 extern char iface_addrs[MAX_IFACES][ETH_ALEN];
 extern int last_iface_idx;
 
-extern void *arp(char *ifname);
-extern void arp_req(char *ifname, struct in_addr remaddr, int gratuitous);
+extern void *arp(const char *ifname);
+extern void arp_req(const char *ifname, struct in_addr remaddr, int gratuitous);
 extern void remove_arp(struct in_addr ipaddr, const char* ifname);
 
 extern void parseproc();
