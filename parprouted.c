@@ -66,12 +66,16 @@ ARPTAB_ENTRY * replace_entry(struct in_addr ipaddr, char *dev)
 					inet_ntop(AF_INET, &ipaddr, NTOP_BUFFER_PARAMS), dev);
 		}
 
-		if ((cur_entry = (ARPTAB_ENTRY *) calloc(1, sizeof(ARPTAB_ENTRY))) == NULL) {
+		cur_entry = (ARPTAB_ENTRY *) calloc(1, sizeof(ARPTAB_ENTRY));
+		if (cur_entry == NULL) {
 			syslog(LOG_INFO, "No memory: %s", strerror(errno));
 			abort();
 		} else {
-			if (prev_entry == NULL) { *arptab=cur_entry; }
-			else { prev_entry->next = cur_entry; }
+			if (prev_entry == NULL) {
+				*arptab=cur_entry;
+			} else {
+				prev_entry->next = cur_entry;
+			}
 			cur_entry->want_route = true;
 		}
 	}
@@ -141,7 +145,9 @@ bool route_remove(ARPTAB_ENTRY* entry)
 		if (system(routecmd_str) != 0) {
 			syslog(LOG_INFO, "'%s' unsuccessful!", routecmd_str);
 		} else {
-			if (debug) printf("%s success\n", routecmd_str);
+			if (debug) {
+				printf("%s success\n", routecmd_str);
+			}
 			success = true;
 			entry->route_added = false;
 		}
@@ -162,7 +168,9 @@ bool route_add(ARPTAB_ENTRY* entry)
 			syslog(LOG_INFO, "'%s' unsuccessful, will try to remove!", routecmd_str);
 			route_remove(entry);
 		} else {
-			if (debug) printf("%s success\n", routecmd_str);
+			if (debug) {
+				printf("%s success\n", routecmd_str);
+			}
 			success = true;
 			entry->route_added = true;
 		}
@@ -186,8 +194,8 @@ void route_check(ARPTAB_ENTRY* entry) {
 	}
 	*/
 
-	int fd;
-	if ((fd = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0)) < 0) {
+	int fd = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
+	if (fd < 0) {
 		syslog(LOG_ERR, "%s() error: %s %s for %s: %s", __FUNCTION__, "socket", "",
 				entry->ifname, strerror(errno));
 	} else {
@@ -229,7 +237,9 @@ bool address_remove(IPTAB_ENTRY* entry) {
 		if (system(addresscmd_str) != 0) {
 			syslog(LOG_INFO, "'%s' unsuccessful!", addresscmd_str);
 		} else {
-			if (debug) printf("%s success\n", addresscmd_str);
+			if (debug) {
+				printf("%s success\n", addresscmd_str);
+			}
 			success = true;
 			entry->ipaddr_ia.s_addr = 0;
 		}
@@ -252,7 +262,9 @@ bool address_add(IPTAB_ENTRY* entry) {
 			syslog(LOG_INFO, "'%s' unsuccessful!", addresscmd_str);
 			entry->ipaddr_ia.s_addr = 0;
 		} else {
-			if (debug) printf("%s success\n", addresscmd_str);
+			if (debug) {
+				printf("%s success\n", addresscmd_str);
+			}
 			success = true;
 		}
 	}
@@ -361,16 +373,18 @@ void processarp(bool in_cleanup)
 		}
 		if (!cur_entry->want_route || in_cleanup || time(NULL) - cur_entry->tstamp > ARP_TABLE_ENTRY_TIMEOUT) {
 
-			if (cur_entry->route_added)
+			if (cur_entry->route_added) {
 				route_remove(cur_entry);
+			}
 
 			/* remove from arp list */
 			if (debug) {
 				printf("Remove %sARP entry %s(%s)\n", cur_entry->incomplete ? "incomplete " : "", 
 						inet_ntop(AF_INET, &cur_entry->ipaddr_ia, NTOP_BUFFER_PARAMS), cur_entry->ifname);
 			}
-			if (cur_entry->incomplete)
+			if (cur_entry->incomplete) {
 				remove_arp(cur_entry->ipaddr_ia, cur_entry->ifname);
+			}
 			
 			if (prev_entry != NULL) {
 				prev_entry->next = cur_entry->next;
@@ -415,8 +429,11 @@ void parseproc()
 
 	/* Parse /proc/net/arp table */
 
-	if ((arpf = fopen(PROC_ARP, "re")) == NULL)
+	arpf = fopen(PROC_ARP, "re");
+	if (arpf == NULL) {
 		syslog(LOG_INFO, "Error during ARP table open: %s", strerror(errno));
+		return;
+	}
 
 	while (!feof(arpf)) {
 
@@ -426,8 +443,13 @@ void parseproc()
 			else
 				syslog(LOG_INFO, "Error during ARP table open: %s", strerror(errno));
 		} else {
-			if (firstline) { firstline=false; continue; }
-			if (debug && verbose) printf("ARP line: %s", line);
+			if (firstline) {
+				firstline = false;
+				continue;
+			}
+			if (debug && verbose) {
+				printf("ARP line: %s", line);
+			}
 			
 			/* IP address */
 			ip=strtok(line, " ");
@@ -448,46 +470,58 @@ void parseproc()
 
 			/* Device */
 			dev=strtok(NULL, " ");
-			if (dev[strlen(dev)-1] == '\n') { dev[strlen(dev)-1] = '\0'; }
+			if (dev[strlen(dev)-1] == '\n') {
+				dev[strlen(dev)-1] = '\0';
+			}
 			
 			/* Incomplete ARP entries with MAC 00:00:00:00:00:00
 			 * Incomplete entries having flag 0x0 */
 			incomplete = strcmp(mac, "00:00:00:00:00:00") == 0 || strcmp(flags, "0x0") == 0;
 			
 			/* Ignore ARP entries for unhandled ifaces */
-			for (i=0; i <= last_iface_idx; i++)
-				if (strcmp(ifaces[i], dev) == 0)
+			for (i=0; i <= last_iface_idx; i++) {
+				if (strcmp(ifaces[i], dev) == 0) {
 					break;
+				}
+			}
 			if (i>last_iface_idx) {
-				if (debug && verbose) printf("Ignoring interface %s\n", dev);
+				if (debug && verbose) {
+					printf("Ignoring interface %s\n", dev);
+				}
 				continue;
 			}
 			
 			/* if the IP address is marked as undiscovered and does not exist in arptab then
 			 * send an ARP request to all ifaces */
 			if (incomplete && !findentry(ipaddr)) {
-				if (debug) printf("ARP entry %s(%s) is incomplete, requesting on all interfaces\n", ip, dev);
-				for (i=0; i <= last_iface_idx; i++)
+				if (debug) {
+					printf("ARP entry %s(%s) is incomplete, requesting on all interfaces\n", ip, dev);
+				}
+				for (i=0; i <= last_iface_idx; i++) {
 					arp_req(ifaces[i], ipaddr, 0);
+				}
 			}
 
 			entry=replace_entry(ipaddr, dev);
 
-			if (entry->incomplete != incomplete && debug)
+			if (entry->incomplete != incomplete && debug) {
 				printf("ARP entry %s(%s) now %scomplete\n", ip, dev, incomplete ? "in" : "");
+			}
 
 			entry->ipaddr_ia.s_addr = ipaddr.s_addr;
 			entry->incomplete = incomplete;
 
-			if (strlen(mac) < ARP_TABLE_ENTRY_LEN)
+			if (strlen(mac) < ARP_TABLE_ENTRY_LEN) {
 				strncpy(entry->hwaddr, mac, ARP_TABLE_ENTRY_LEN);
-			else
+			} else {
 				syslog(LOG_INFO, "Error during ARP table parsing");
+			}
 
-			if (strlen(dev) < ARP_TABLE_ENTRY_LEN)
+			if (strlen(dev) < ARP_TABLE_ENTRY_LEN) {
 				strncpy(entry->ifname, dev, ARP_TABLE_ENTRY_LEN);
-			else
+			} else {
 				syslog(LOG_INFO, "Error during ARP table parsing");
+			}
 
 			/* do not add routes for incomplete entries */
 			if (debug && entry->want_route != !incomplete) {
@@ -515,12 +549,14 @@ void parseproc()
 		}
 	}
 
-	if (fclose(arpf))
-		syslog(LOG_INFO, "Error during ARP table open: %s", strerror(errno));
+	if (fclose(arpf)) {
+		syslog(LOG_INFO, "Error closing ARP table file: %s", strerror(errno));
+	}
 }
 
 void cleanup(void *arg)
 {
+	(void)arg; /* Unused parameter */
 	syslog(LOG_INFO, "Received signal; cleaning up.");
 //	for (i=0; i <= last_thread_idx; i++) {
 //		pthread_cancel(my_threads[i]);
@@ -536,11 +572,13 @@ void cleanup(void *arg)
 
 void sighandler(int sig)
 {
+	(void)sig; /* Unused parameter */
 	perform_shutdown = true;
 }
 
 void *main_thread(void *arg)
 {
+	(void)arg; /* Unused parameter */
 	time_t last_refresh = 0, last_sync = 0;
 
 	signal(SIGINT, sighandler);
