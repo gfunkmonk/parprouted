@@ -8,11 +8,28 @@ Typing "make all && make install" will install parprouted into
 
 Manual can be found by typing "man parprouted".
 
-2) Contact/copyright:
+2) Building and Development:
+
+Build the project:
+    make clean && make all
+
+Build with debug symbols:
+    DEBUG=1 make clean && make all
+
+Run static analysis:
+    clang-tidy parprouted.c arp.c -- -I.
+
+Check code formatting:
+    clang-format -i *.c *.h
+
+The project uses GitHub Actions for continuous integration, which
+automatically builds and runs static analysis on each commit.
+
+3) Contact/copyright:
 
 GPLv2, (C) 2008, Vladimir Ivaschenko <vi@maks.net>
 
-3) Acknowledgements:
+4) Acknowledgements:
 
 tarpd v1.6 by tricky@cs.hut.fi
 watchdog by Michael Meskes <meskes@debian.org>

@@ -66,12 +66,16 @@ ARPTAB_ENTRY * replace_entry(struct in_addr ipaddr, char *dev)
 					inet_ntop(AF_INET, &ipaddr, NTOP_BUFFER_PARAMS), dev);
 		}
 
-		if ((cur_entry = (ARPTAB_ENTRY *) calloc(1, sizeof(ARPTAB_ENTRY))) == NULL) {
+		cur_entry = (ARPTAB_ENTRY *) calloc(1, sizeof(ARPTAB_ENTRY));
+		if (cur_entry == NULL) {
 			syslog(LOG_INFO, "No memory: %s", strerror(errno));
 			abort();
 		} else {
-			if (prev_entry == NULL) { *arptab=cur_entry; }
-			else { prev_entry->next = cur_entry; }
+			if (prev_entry == NULL) {
+				*arptab=cur_entry;
+			} else {
+				prev_entry->next = cur_entry;
+			}
 			cur_entry->want_route = true;
 		}
 	}
@@ -141,7 +145,9 @@ bool route_remove(ARPTAB_ENTRY* entry)
 		if (system(routecmd_str) != 0) {
 			syslog(LOG_INFO, "'%s' unsuccessful!", routecmd_str);
 		} else {
-			if (debug) printf("%s success\n", routecmd_str);
+			if (debug) {
+				printf("%s success\n", routecmd_str);
+			}
 			success = true;
 			entry->route_added = false;
 		}
@@ -162,7 +168,9 @@ bool route_add(ARPTAB_ENTRY* entry)
 			syslog(LOG_INFO, "'%s' unsuccessful, will try to remove!", routecmd_str);
 			route_remove(entry);
 		} else {
-			if (debug) printf("%s success\n", routecmd_str);
+			if (debug) {
+				printf("%s success\n", routecmd_str);
+			}
 			success = true;
 			entry->route_added = true;
 		}
@@ -186,8 +194,8 @@ void route_check(ARPTAB_ENTRY* entry) {
 	}
 	*/
 
-	int fd;
-	if ((fd = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0)) < 0) {
+	int fd = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
+	if (fd < 0) {
 		syslog(LOG_ERR, "%s() error: %s %s for %s: %s", __FUNCTION__, "socket", "",
 				entry->ifname, strerror(errno));
 	} else {
@@ -229,7 +237,9 @@ bool address_remove(IPTAB_ENTRY* entry) {
 		if (system(addresscmd_str) != 0) {
 			syslog(LOG_INFO, "'%s' unsuccessful!", addresscmd_str);
 		} else {
-			if (debug) printf("%s success\n", addresscmd_str);
+			if (debug) {
+				printf("%s success\n", addresscmd_str);
+			}
 			success = true;
 			entry->ipaddr_ia.s_addr = 0;
 		}
@@ -252,7 +262,9 @@ bool address_add(IPTAB_ENTRY* entry) {
 			syslog(LOG_INFO, "'%s' unsuccessful!", addresscmd_str);
 			entry->ipaddr_ia.s_addr = 0;
 		} else {
-			if (debug) printf("%s success\n", addresscmd_str);
+			if (debug) {
+				printf("%s success\n", addresscmd_str);
+			}
 			success = true;
 		}
 	}
@@ -361,16 +373,18 @@ void processarp(bool in_cleanup)
 		}
 		if (!cur_entry->want_route || in_cleanup || time(NULL) - cur_entry->tstamp > ARP_TABLE_ENTRY_TIMEOUT) {
 
-			if (cur_entry->route_added)
+			if (cur_entry->route_added) {
 				route_remove(cur_entry);
+			}
 
 			/* remove from arp list */
 			if (debug) {
 				printf("Remove %sARP entry %s(%s)\n", cur_entry->incomplete ? "incomplete " : "", 
 						inet_ntop(AF_INET, &cur_entry->ipaddr_ia, NTOP_BUFFER_PARAMS), cur_entry->ifname);
 			}
-			if (cur_entry->incomplete)
+			if (cur_entry->incomplete) {
 				remove_arp(cur_entry->ipaddr_ia, cur_entry->ifname);
+			}
 			
 			if (prev_entry != NULL) {
 				prev_entry->next = cur_entry->next;
