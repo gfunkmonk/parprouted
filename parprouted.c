@@ -519,7 +519,7 @@ void parseproc()
 		syslog(LOG_INFO, "Error during ARP table open: %s", strerror(errno));
 }
 
-void cleanup() 
+void cleanup(void *arg)
 {
 	syslog(LOG_INFO, "Received signal; cleaning up.");
 //	for (i=0; i <= last_thread_idx; i++) {
@@ -534,12 +534,12 @@ void cleanup()
 	exit(exit_code);
 }
 
-void sighandler()
+void sighandler(int sig)
 {
 	perform_shutdown = true;
 }
 
-void *main_thread()
+void *main_thread(void *arg)
 {
 	time_t last_refresh = 0, last_sync = 0;
 
