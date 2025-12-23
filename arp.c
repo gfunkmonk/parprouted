@@ -346,7 +346,8 @@ void remove_arp(struct in_addr ipaddr, const char* ifname)
 		syslog(LOG_ERR, "%s() error: %s %s for %s: %s", __FUNCTION__, "socket", "",
 				ifname, strerror(errno));
 	} else {
-		strncpy(k_arpreq.arp_dev, ifname, IFNAMSIZ);
+                strncpy(k_arpreq.arp_dev, ifname, IFNAMSIZ - 1);
+                k_arpreq.arp_dev[IFNAMSIZ - 1] = '\0';
 		k_arpreq.arp_pa.sa_family = AF_INET;
 		memcpy(&sin->sin_addr, &ipaddr, sizeof(ipaddr));
 		if (ioctl(arpsock, SIOCDARP, &k_arpreq) < 0) {
@@ -451,7 +452,8 @@ void *arp(char *ifname)
 				k_arpreq.arp_flags = ATF_COM;
 				if (option_arpperm)
 					k_arpreq.arp_flags = k_arpreq.arp_flags | ATF_PERM;
-				strncpy(k_arpreq.arp_dev, ifname, IFNAMSIZ);
+				strncpy(k_arpreq.arp_dev, ifname, IFNAMSIZ - 1);
+                                k_arpreq.arp_dev[IFNAMSIZ - 1] = '\0';
 
 				k_arpreq.arp_pa.sa_family = AF_INET;
 				sin = (struct sockaddr_in *) &k_arpreq.arp_pa;

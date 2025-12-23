@@ -1,14 +1,14 @@
 ifdef DEBUG
-CFLAGS  	?= -g -DDEBUG
+CFLAGS  	= -g -DDEBUG
 else
-CFLAGS  	?= -Os -flto -DNDEBUG
-LDFLAGS 	?= -s -w
+CFLAGS  	= -Os -flto -DNDEBUG
+LDFLAGS 	= -s -w
 endif
 
-PREFIX		?= $(DESTDIR)/usr
-CC		?= gcc
-SBINDIR		?= ${DESTDIR}${PREFIX}/sbin
-MANDIR		?= ${DESTDIR}${PREFIX}/share/man/man8
+PREFIX		= $(DESTDIR)/usr
+CC		= gcc
+SBINDIR		= ${PREFIX}/sbin
+MANDIR		= ${PREFIX}/share/man/man8
 
 CFLAGS := ${CFLAGS} -Werror -Wall -Wextra
 

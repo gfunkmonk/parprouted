@@ -723,8 +723,9 @@ int main (int argc, char **argv)
 				syslog(LOG_INFO, "No memory: %s", strerror(errno));
 				abort();
 			}
-			strncpy((*entry)->ifname, ifaces[i], IFNAMSIZ);
-			(*entry)->ifname[IFNAMSIZ-1] = 0;
+			//strncpy((*entry)->ifname, ifaces[i], IFNAMSIZ);
+			//(*entry)->ifname[IFNAMSIZ-1] = 0;
+                        snprintf((*entry)->ifname, sizeof((*entry)->ifname), "%s", ifaces[i]);
 			entry = &(*entry)->next;
 		}
 	}
