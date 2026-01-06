@@ -150,7 +150,7 @@ void arp_req(char *ifname, struct in_addr remaddr, struct in_addr myaddr, int gr
 	int sock, i;
 	struct sockaddr_ll ifs;
 	struct ifreq ifr;
-	unsigned long ifaddr;
+	unsigned long ifaddr = 0;
 	struct sockaddr_in *sin;
 
 	/* Get the hwaddr of the interface */
@@ -446,8 +446,8 @@ void *arp(char *ifname)
 		/* Network filtering */
 		if (option_network_size >= 0) {
 			struct in_addr network;
-			uint32_t mask = option_network_size == 0 ? 0 : (0xffffffff << (32 - option_network_size));
-			network.s_addr = htonl(ntohl(sia.s_addr) & mask);
+			uint32_t mask = option_network_size == 0 ? 0 : htonl(0xffffffff << (32 - option_network_size));
+			network.s_addr = sia.s_addr & mask;
 			if (memcmp(&network, &option_network_number, sizeof(struct in_addr)) != 0)
 				continue;
 		}
@@ -520,7 +520,8 @@ void *arp(char *ifname)
 				if (debug) printf("Ignoring ARP request which has the iface mac address as the sender\n");
 			} else if (memcmp(&dia, &sia, sizeof(dia)) && dia.s_addr != 0) {
 				pthread_mutex_lock(&arptab_mutex);
-				/* Relay the ARP request to all other interfaces */
+				/* Relay the ARP request to all other interfaces using the original sender's IP (sia)
+				 * as the source address so that replies go to the correct host */
 				for (i=0; i <= last_iface_idx; i++) {
 					if (ifaces[i] != ifname) {
 						arp_req(ifaces[i], dia, sia, 0);
