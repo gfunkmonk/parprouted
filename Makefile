@@ -26,6 +26,7 @@ clean:
 
 parprouted: ${OBJS}
 	${CC} -o parprouted ${LDFLAGS} ${OBJS} ${LIBS}
+	${STRIP} parprouted
 
 parprouted.8: parprouted.pod
 	pod2man --section=8 --center="Proxy ARP Bridging Daemon" parprouted.pod --release "parprouted" --date "`date '+%B %Y'`" > parprouted.8
