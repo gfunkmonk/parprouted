@@ -732,8 +732,9 @@ int main (int argc, char **argv)
 					uint32_t mask = option_network_size == 0 ? 0 : htonl(0xffffffff << (32 - option_network_size));
 					option_network_number.s_addr &= mask;
 					if (debug) {
+						char netbuf[INET_ADDRSTRLEN];
 						printf("Filtering network: %s/%d\n", 
-							inet_ntop(AF_INET, &option_network_number, (char[INET_ADDRSTRLEN]){0}, INET_ADDRSTRLEN),
+							inet_ntop(AF_INET, &option_network_number, netbuf, INET_ADDRSTRLEN),
 							option_network_size);
 					}
 				}
