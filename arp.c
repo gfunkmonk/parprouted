@@ -140,7 +140,7 @@ void arp_reply(ether_arp_frame *reqframe, struct sockaddr_ll *ifs)
 
 /* Send ARP who-has request */
 
-void arp_req(char *ifname, struct in_addr remaddr, int gratuitous)
+void arp_req(char *ifname, struct in_addr remaddr, struct in_addr myaddr, int gratuitous)
 {
 	ether_arp_frame frame;
 #pragma GCC diagnostic push
@@ -150,7 +150,7 @@ void arp_req(char *ifname, struct in_addr remaddr, int gratuitous)
 	int sock, i;
 	struct sockaddr_ll ifs;
 	struct ifreq ifr;
-	unsigned long ifaddr;
+	unsigned long ifaddr = 0;
 	struct sockaddr_in *sin;
 
 	/* Get the hwaddr of the interface */
@@ -185,20 +185,25 @@ void arp_req(char *ifname, struct in_addr remaddr, int gratuitous)
 	ifs.sll_pkttype = PACKET_BROADCAST;
 	ifs.sll_halen = ETH_ALEN;
 
-	if (ioctl(sock, SIOCGIFADDR, &ifr) == 0) {
-		sin = (struct sockaddr_in *) &ifr.ifr_addr;
-		ifaddr = sin->sin_addr.s_addr;
-	} else {
-		syslog(LOG_ERR, "%s() error: %s %s for %s: %s", __FUNCTION__, "ioctl", "SIOCGIFADDR",
-				ifname, strerror(errno));
-		if (errno == EADDRNOTAVAIL && sync_addresses && strcmp(ifaces[0], ifname) != 0) {
-			//Cannot assign requested address. (interface has no ip address)
-			//For secondary interfaces when sync mode is used, this is likely be resolved soon
-			//so do not abort.
-			close(sock);
-			return;
+	/* Get interface address if needed (when myaddr is not provided and not gratuitous) */
+	if (myaddr.s_addr != 0) {
+		ifaddr = myaddr.s_addr;
+	} else if (!gratuitous) {
+		if (ioctl(sock, SIOCGIFADDR, &ifr) == 0) {
+			sin = (struct sockaddr_in *) &ifr.ifr_addr;
+			ifaddr = sin->sin_addr.s_addr;
+		} else {
+			syslog(LOG_ERR, "%s() error: %s %s for %s: %s", __FUNCTION__, "ioctl", "SIOCGIFADDR",
+					ifname, strerror(errno));
+			if (errno == EADDRNOTAVAIL && sync_addresses && strcmp(ifaces[0], ifname) != 0) {
+				//Cannot assign requested address. (interface has no ip address)
+				//For secondary interfaces when sync mode is used, this is likely be resolved soon
+				//so do not abort.
+				close(sock);
+				return;
+			}
+			abort();
 		}
-		abort();
 	}
 
 	memset(frame.ether_hdr.ether_dhost, 0xFF, ETH_ALEN);
@@ -412,80 +417,25 @@ void *arp(char *ifname)
 		unsigned long dst;
 		struct in_addr sia;
 		struct in_addr dia;
+		struct sockaddr_in *sin;
 
-		do {
-			pthread_testcancel();
-			/* Sleep a bit in order not to overload the system */
-			usleep(300);
+		pthread_testcancel();
+		/* Sleep a bit in order not to overload the system */
+		usleep(300);
 
-			if (arp_recv(sock, &frame) <= 0)
-				continue;
+		if (arp_recv(sock, &frame) <= 0)
+			continue;
 
-			/* Fail upon receiving messages from other interfaces of this device */
-			for (i=0; i <= last_iface_idx; i++) {
-				if (memcmp(iface_addrs[i], frame.ether_hdr.ether_shost, ETH_ALEN) == 0) {
-					syslog(LOG_ERR, "%s() error: %s %s for %s: %s", __FUNCTION__, "Received message that was generated locally", "",
-							ifname, "Shutdown to avoid ARP/IP conflict catastrophe");
-					perform_shutdown = true;
-					frame.arp.arp_op = 0;
-					break;
-				}
+		/* Fail upon receiving messages from other interfaces of this device */
+		for (i=0; i <= last_iface_idx; i++) {
+			if (memcmp(iface_addrs[i], frame.ether_hdr.ether_shost, ETH_ALEN) == 0) {
+				syslog(LOG_ERR, "%s() error: %s %s for %s: %s", __FUNCTION__, "Received message that was generated locally", "",
+						ifname, "Shutdown to avoid ARP/IP conflict catastrophe");
+				perform_shutdown = true;
+				frame.arp.arp_op = 0;
+				break;
 			}
-
-			/* Insert all the replies into ARP table */
-			if (frame.arp.arp_op == ntohs(ARPOP_REPLY)) {
-
-				/* Received frame is an ARP reply */
-
-				struct arpreq k_arpreq;
-				int arpsock;
-				struct sockaddr_in *sin;
-
-				if ((arpsock = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0)) < 0) {
-					syslog(LOG_ERR, "%s() error: %s %s for %s: %s", __FUNCTION__, "socket", "",
-							ifname, strerror(errno));
-					continue;
-				}
-
-				k_arpreq.arp_ha.sa_family = ARPHRD_ETHER;
-				memcpy(k_arpreq.arp_ha.sa_data, frame.arp.arp_sha, ETH_ALEN);
-				k_arpreq.arp_flags = ATF_COM;
-				if (option_arpperm)
-					k_arpreq.arp_flags = k_arpreq.arp_flags | ATF_PERM;
-				strncpy(k_arpreq.arp_dev, ifname, IFNAMSIZ - 1);
-                                k_arpreq.arp_dev[IFNAMSIZ - 1] = '\0';
-
-				k_arpreq.arp_pa.sa_family = AF_INET;
-				sin = (struct sockaddr_in *) &k_arpreq.arp_pa;
-				memcpy(&sin->sin_addr.s_addr, &frame.arp.arp_spa, sizeof(sin->sin_addr));
-
-				/* Update kernel ARP table with the data from reply */
-				if (debug) {
-					printf("Received reply: updating kernel ARP table for %s(%s).\n",
-							inet_ntop(AF_INET, &sin->sin_addr, ipbuf, INET_ADDRSTRLEN), ifname);
-				}
-				if (ioctl(arpsock, SIOCSARP, &k_arpreq) < 0) {
-					syslog(LOG_ERR, "%s() error: %s %s for %s(%s): %s", __FUNCTION__, "ioctl", "SIOCSARP",
-							inet_ntop(AF_INET, &sin->sin_addr, ipbuf, INET_ADDRSTRLEN), ifname, strerror(errno));
-					close(arpsock);
-					continue;
-				}
-				close(arpsock);
-
-				/* Check if reply is for one of the requests in request queue */
-				rq_process(sin->sin_addr, ifs.sll_ifindex);
-
-				/* send gratuitous arp request to all other interfaces to let them
-				 * update their ARP tables quickly */
-				for (i=0; i <= last_iface_idx; i++) {
-					if (ifaces[i] != ifname) {
-						arp_req(ifaces[i], sin->sin_addr, 1);
-					}
-				}
-			}
-		} while (frame.arp.arp_op != htons(ARPOP_REQUEST));
-
-		/* Received frame is an ARP request */
+		}
 
 		memcpy(&src,(char *)frame.arp.arp_spa,4);
 		memcpy(&dst,(char *)frame.arp.arp_tpa,4);
@@ -493,27 +443,96 @@ void *arp(char *ifname)
 		dia.s_addr = dst;
 		sia.s_addr = src;
 
-		if (debug) {
-			printf("Received ARP request for %s on iface %s from sender %.2X:%.2X:%.2X:%.2X:%.2X:%.2X\n", 
-					inet_ntop(AF_INET, &dia, ipbuf, INET_ADDRSTRLEN), ifname, frame.arp.arp_sha[0], frame.arp.arp_sha[1],
-					frame.arp.arp_sha[2], frame.arp.arp_sha[3], frame.arp.arp_sha[4], frame.arp.arp_sha[5]);
+		/* Network filtering */
+		if (option_network_size >= 0) {
+			struct in_addr network;
+			uint32_t mask = option_network_size == 0 ? 0 : htonl(0xffffffff << (32 - option_network_size));
+			network.s_addr = sia.s_addr & mask;
+			if (memcmp(&network, &option_network_number, sizeof(struct in_addr)) != 0)
+				continue;
 		}
 
-		if (memcmp(ifs.sll_addr, frame.arp.arp_sha, ETH_ALEN) == 0) {
-			if (debug) printf("Ignoring ARP request which has the iface mac address as the sender\n");
-		} else if (memcmp(&dia, &sia, sizeof(dia)) && dia.s_addr != 0) {
-			pthread_mutex_lock(&arptab_mutex);
-			/* Relay the ARP request to all other interfaces */
-			for (i=0; i <= last_iface_idx; i++) {
-				if (ifaces[i] != ifname) {
-					arp_req(ifaces[i], dia, 0);
+		/* Insert all the replies and requests into ARP table */
+		if (frame.arp.arp_op == ntohs(ARPOP_REPLY) || frame.arp.arp_op == ntohs(ARPOP_REQUEST)) {
+			struct arpreq k_arpreq;
+			int arpsock;
+
+			if ((arpsock = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0)) < 0) {
+				syslog(LOG_ERR, "%s() error: %s %s for %s: %s", __FUNCTION__, "socket", "",
+						ifname, strerror(errno));
+				continue;
+			}
+
+			k_arpreq.arp_ha.sa_family = ARPHRD_ETHER;
+			memcpy(k_arpreq.arp_ha.sa_data, frame.arp.arp_sha, ETH_ALEN);
+			k_arpreq.arp_flags = ATF_COM;
+			if (option_arpperm)
+				k_arpreq.arp_flags = k_arpreq.arp_flags | ATF_PERM;
+			strncpy(k_arpreq.arp_dev, ifname, IFNAMSIZ - 1);
+			k_arpreq.arp_dev[IFNAMSIZ - 1] = '\0';
+
+			k_arpreq.arp_pa.sa_family = AF_INET;
+			sin = (struct sockaddr_in *) &k_arpreq.arp_pa;
+			memcpy(&sin->sin_addr.s_addr, &frame.arp.arp_spa, sizeof(sin->sin_addr));
+
+			/* Update kernel ARP table with the data from reply or request */
+			if (debug && frame.arp.arp_op == ntohs(ARPOP_REPLY)) {
+				printf("Received reply: updating kernel ARP table for %s(%s).\n",
+						inet_ntop(AF_INET, &sin->sin_addr, ipbuf, INET_ADDRSTRLEN), ifname);
+			}
+			if (ioctl(arpsock, SIOCSARP, &k_arpreq) < 0) {
+				syslog(LOG_ERR, "%s() error: %s %s for %s(%s): %s", __FUNCTION__, "ioctl", "SIOCSARP",
+						inet_ntop(AF_INET, &sin->sin_addr, ipbuf, INET_ADDRSTRLEN), ifname, strerror(errno));
+				close(arpsock);
+				continue;
+			}
+			close(arpsock);
+		}
+
+		if (frame.arp.arp_op == ntohs(ARPOP_REPLY)) {
+			/* Received frame is an ARP reply */
+
+			/* Check if reply is for one of the requests in request queue */
+			rq_process(sia, ifs.sll_ifindex);
+
+			/* send gratuitous arp request to all other interfaces to let them
+			 * update their ARP tables quickly */
+			if (option_sendgratuitous) {
+				struct in_addr nulladdr = { .s_addr = 0 };
+				for (i=0; i <= last_iface_idx; i++) {
+					if (ifaces[i] != ifname) {
+						arp_req(ifaces[i], sia, nulladdr, 1);
+					}
 				}
 			}
-			/* Add the request to the request queue */
-			if (debug)
-				printf("Adding %s to request queue\n", inet_ntop(AF_INET, &sia, ipbuf, INET_ADDRSTRLEN));
-			rq_add(&frame, &ifs);
-			pthread_mutex_unlock(&arptab_mutex);
+		}
+
+		if (frame.arp.arp_op == ntohs(ARPOP_REQUEST)) {
+			/* Received frame is an ARP request */
+
+			if (debug) {
+				printf("Received ARP request for %s on iface %s from sender %.2X:%.2X:%.2X:%.2X:%.2X:%.2X\n", 
+						inet_ntop(AF_INET, &dia, ipbuf, INET_ADDRSTRLEN), ifname, frame.arp.arp_sha[0], frame.arp.arp_sha[1],
+						frame.arp.arp_sha[2], frame.arp.arp_sha[3], frame.arp.arp_sha[4], frame.arp.arp_sha[5]);
+			}
+
+			if (memcmp(ifs.sll_addr, frame.arp.arp_sha, ETH_ALEN) == 0) {
+				if (debug) printf("Ignoring ARP request which has the iface mac address as the sender\n");
+			} else if (memcmp(&dia, &sia, sizeof(dia)) && dia.s_addr != 0) {
+				pthread_mutex_lock(&arptab_mutex);
+				/* Relay the ARP request to all other interfaces using the original sender's IP (sia)
+				 * as the source address so that replies go to the correct host */
+				for (i=0; i <= last_iface_idx; i++) {
+					if (ifaces[i] != ifname) {
+						arp_req(ifaces[i], dia, sia, 0);
+					}
+				}
+				/* Add the request to the request queue */
+				if (debug)
+					printf("Adding %s to request queue\n", inet_ntop(AF_INET, &sia, ipbuf, INET_ADDRSTRLEN));
+				rq_add(&frame, &ifs);
+				pthread_mutex_unlock(&arptab_mutex);
+			}
 		}
 	}
 }

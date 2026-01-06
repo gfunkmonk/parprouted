@@ -29,6 +29,9 @@ bool debug = false;
 bool verbose = false;
 bool option_arpperm = false;
 bool option_addressless = false;
+bool option_sendgratuitous = false;
+int option_network_size = -1;
+struct in_addr option_network_number;
 bool sync_addresses = false;
 bool perform_shutdown = false;
 int exit_code = EXIT_SUCCESS;
@@ -498,11 +501,12 @@ void parseproc()
 			 * send an ARP request to all ifaces. Skip this in addressless mode because
 			 * without IP addresses on the interfaces, we cannot properly send ARP requests. */
 			if (!option_addressless && incomplete && !findentry(ipaddr)) {
+				struct in_addr nulladdr = { .s_addr = 0 };
 				if (debug) {
 					printf("ARP entry %s(%s) is incomplete, requesting on all interfaces\n", ip, dev);
 				}
 				for (i=0; i <= last_iface_idx; i++) {
-					arp_req(ifaces[i], ipaddr, 0);
+					arp_req(ifaces[i], ipaddr, nulladdr, 0);
 				}
 			}
 
@@ -649,13 +653,14 @@ void *main_thread(void *arg)
 		pthread_mutex_unlock(&arptab_mutex);
 		usleep(SLEEPTIME);
 		if (!option_arpperm && !option_addressless && time(NULL)-last_refresh > REFRESHTIME) {
+			struct in_addr nulladdr = { .s_addr = 0 };
 			pthread_mutex_lock(&arptab_mutex);
 			if (debug)
 				printf("Refreshing ARP entries.\n");
 			for (ARPTAB_ENTRY *entry = *arptab; entry != NULL; entry = entry->next) {
 				route_check(entry);
 				entry->removed_due_to_conflict = false;
-				arp_req(entry->ifname, entry->ipaddr_ia, 0);
+				arp_req(entry->ifname, entry->ipaddr_ia, nulladdr, 0);
 			}
 			pthread_mutex_unlock(&arptab_mutex);
 			time(&last_refresh);
@@ -673,17 +678,22 @@ int main (int argc, char **argv)
 
 	progname = (char *) basename(argv[0]);
 
+	/* Initialize network filter */
+	memset(&option_network_number, 0, sizeof(struct in_addr));
+
 	static struct option long_options[] = {
 		{ "addressless", 0, 0, 'a' },
 		{ "debug", 0, 0, 'd' },
 		{ "foreground", 0, 0, 'f' },
+		{ "gratuitous", 0, 0, 'g' },
 		{ "help", 0, 0, 0 },
+		{ "network", 1, 0, 'n' },
 		{ "permanent", 0, 0, 'p' },
 		{ "pidfile", 1, 0, 'P' },
 		{ "sync", 0, 0, 's' },
 		{ NULL, 0, 0, 0 },
 	};
-	for (int ch; (ch = getopt_long(argc, argv, "adfhpP:s", long_options, NULL)) != -1 && !help;) {
+	for (int ch; (ch = getopt_long(argc, argv, "adfghn:pP:s", long_options, NULL)) != -1 && !help;) {
 		switch (ch) {
 			case 'a':
 				option_addressless = true;
@@ -697,6 +707,37 @@ int main (int argc, char **argv)
 				// fall through
 			case 'f':
 				foreground = true;
+				break;
+			case 'g':
+				option_sendgratuitous = true;
+				break;
+			case 'n':
+				{
+					char *slash = strchr(optarg, '/');
+					if (slash == NULL) {
+						fprintf(stderr, "Error: network must be in CIDR notation (address/size)\n");
+						exit(1);
+					}
+					*slash = '\0';
+					if (inet_pton(AF_INET, optarg, &option_network_number) != 1) {
+						fprintf(stderr, "Error: invalid network address '%s'\n", optarg);
+						exit(1);
+					}
+					option_network_size = atoi(slash + 1);
+					if (option_network_size < 0 || option_network_size > 32) {
+						fprintf(stderr, "Error: network size must be between 0 and 32\n");
+						exit(1);
+					}
+					/* Apply network mask to the address */
+					uint32_t mask = option_network_size == 0 ? 0 : htonl(0xffffffff << (32 - option_network_size));
+					option_network_number.s_addr &= mask;
+					if (debug) {
+						char netbuf[INET_ADDRSTRLEN];
+						printf("Filtering network: %s/%d\n", 
+							inet_ntop(AF_INET, &option_network_number, netbuf, INET_ADDRSTRLEN),
+							option_network_size);
+					}
+				}
 				break;
 			case 'p':
 				option_arpperm = true;
@@ -718,7 +759,17 @@ int main (int argc, char **argv)
 	if (help || last_iface_idx <= -1) {
 		printf("parprouted: proxy ARP routing daemon, version %s.\n", VERSION);
 		printf("(C) 2007 Vladimir Ivaschenko <vi@maks.net>, GPL2 license.\n");
-		printf("Usage: parprouted [--addressless -a] [--debug -d] [--foreground -f] [--permanent -p] [--pidfile -P <file>] [--sync -s] interfaces ...\n");
+		printf("Usage: parprouted [options] interface [interface ...]\n");
+		printf("Options:\n");
+		printf("  -a, --addressless       Addressless mode (implies -p)\n");
+		printf("  -d, --debug             Debug mode (verbose output, implies -f)\n");
+		printf("  -f, --foreground        Run in foreground\n");
+		printf("  -g, --gratuitous        Send gratuitous ARP announcements\n");
+		printf("  -h, --help              Show this help message\n");
+		printf("  -n, --network ADDR/SIZE Filter ARP traffic by network (e.g., 192.168.1.0/24)\n");
+		printf("  -p, --permanent         Use permanent ARP entries\n");
+		printf("  -P, --pidfile FILE      Write PID to specified file\n");
+		printf("  -s, --sync              Sync IP addresses across interfaces\n");
 		exit(0);
 	}
 

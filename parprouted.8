@@ -64,7 +64,7 @@
 parprouted \- Proxy ARP IP bridging daemon
 .SH SYNOPSIS
 .IX Header "SYNOPSIS"
-\&\fBparprouted\fR [\fB\-\-addressless \-a\fR] [\fB\-\-debug \-d\fR] [\fB\-\-foreground \-f\fR] [\fB\-\-permanent \-p\fR] [\fB\-\-pidfile \-P\fR \fIfile\fR] [\fB\-\-sync \-s\fR] \fBinterface\fR [\fBinterface ...\fR]
+\&\fBparprouted\fR [\fB\-\-addressless \-a\fR] [\fB\-\-debug \-d\fR] [\fB\-\-foreground \-f\fR] [\fB\-\-gratuitous \-g\fR] [\fB\-\-network \-n\fR \fIaddress/size\fR] [\fB\-\-permanent \-p\fR] [\fB\-\-pidfile \-P\fR \fIfile\fR] [\fB\-\-sync \-s\fR] \fBinterface\fR [\fBinterface ...\fR]
 .SH DESCRIPTION
 .IX Header "DESCRIPTION"
 parprouted is a daemon for transparent IP (Layer 3) proxy ARP bridging. 
@@ -122,6 +122,15 @@ as a daemon.
 .PP
 \&\fB\-d\fR, which stands for debug. Extra debugging info is emitted to 
 stdout/stderr. This implies \fB\-f\fR.
+.PP
+\&\fB\-g\fR or \fB\-\-gratuitous\fR, which enables sending gratuitous ARP announcements.
+When enabled, the daemon will send gratuitous ARP requests to all other 
+interfaces when it receives an ARP reply. This helps other hosts update their 
+ARP tables more quickly.
+.PP
+\&\fB\-n\fR \fIaddress/size\fR or \fB\-\-network\fR \fIaddress/size\fR, which filters ARP 
+traffic by network. Only ARP packets from the specified network will be 
+processed. The network should be specified in CIDR notation (e.g., 192.168.1.0/24).
 .PP
 \&\fB\-p\fR, which makes all ARP entries permanent. This will also result in that 
 ARP tables will not be refreshed by ARP pings.

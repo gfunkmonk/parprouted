@@ -68,6 +68,9 @@ extern bool verbose;
 extern bool perform_shutdown;
 extern bool option_arpperm;
 extern bool option_addressless;
+extern bool option_sendgratuitous;
+extern int option_network_size;
+extern struct in_addr option_network_number;
 extern bool sync_addresses;
 extern char *pidfile;
 
@@ -80,7 +83,7 @@ extern char iface_addrs[MAX_IFACES][ETH_ALEN];
 extern int last_iface_idx;
 
 extern void *arp(char *ifname);
-extern void arp_req(char *ifname, struct in_addr remaddr, int gratuitous);
+extern void arp_req(char *ifname, struct in_addr remaddr, struct in_addr myaddr, int gratuitous);
 extern void remove_arp(struct in_addr ipaddr, const char* ifname);
 
 extern void parseproc();
