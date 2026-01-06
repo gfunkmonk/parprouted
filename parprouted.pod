@@ -7,7 +7,7 @@ B<parprouted> - Proxy ARP IP bridging daemon
 
 =head1 SYNOPSIS
 
-B<parprouted> [B<--debug -d>] [B<--foreground -f>] [B<--permanent -p>] [B<--pidfile -P> I<file>] [B<--sync -s>] B<interface> [B<interface ...>]
+B<parprouted> [B<--addressless -a>] [B<--debug -d>] [B<--foreground -f>] [B<--permanent -p>] [B<--pidfile -P> I<file>] [B<--sync -s>] B<interface> [B<interface ...>]
 
 =head1 DESCRIPTION
 
@@ -58,6 +58,9 @@ proc filesystem mounted in /proc because the daemon uses /proc/net/arp.
 The list of interfaces to do bridging on should be given via the command line.
 
 The daemon accepts the following switches:
+
+B<-a> or B<--addressless>, which enables addressless mode for use when bridged 
+interfaces have no IP addresses. This mode implies B<-p> (permanent ARP entries).
 
 B<-f>, which stands for foreground. This option prevents running the program 
 as a daemon.
