@@ -653,8 +653,7 @@ void *main_thread(void *arg)
 			if (debug)
 				printf("Refreshing ARP entries.\n");
 			for (ARPTAB_ENTRY *entry = *arptab; entry != NULL; entry = entry->next) {
-				if (sync_addresses)
-					route_check(entry);
+				route_check(entry);
 				entry->removed_due_to_conflict = false;
 				arp_req(entry->ifname, entry->ipaddr_ia, 0);
 			}
