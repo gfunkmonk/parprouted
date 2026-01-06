@@ -495,7 +495,8 @@ void parseproc()
 			}
 			
 			/* if the IP address is marked as undiscovered and does not exist in arptab then
-			 * send an ARP request to all ifaces (unless in addressless mode) */
+			 * send an ARP request to all ifaces. Skip this in addressless mode because
+			 * without IP addresses on the interfaces, we cannot properly send ARP requests. */
 			if (!option_addressless && incomplete && !findentry(ipaddr)) {
 				if (debug) {
 					printf("ARP entry %s(%s) is incomplete, requesting on all interfaces\n", ip, dev);
@@ -687,6 +688,8 @@ int main (int argc, char **argv)
 		switch (ch) {
 			case 'a':
 				option_addressless = true;
+				/* Addressless mode implies permanent ARP entries since we cannot 
+				 * refresh them without IP addresses on the interfaces */
 				option_arpperm = true;
 				break;
 			case 'd':
