@@ -185,7 +185,10 @@ void arp_req(char *ifname, struct in_addr remaddr, struct in_addr myaddr, int gr
 	ifs.sll_pkttype = PACKET_BROADCAST;
 	ifs.sll_halen = ETH_ALEN;
 
-	if (myaddr.s_addr == 0 && !gratuitous) {
+	/* Get interface address if needed (when myaddr is not provided and not gratuitous) */
+	if (myaddr.s_addr != 0) {
+		ifaddr = myaddr.s_addr;
+	} else if (!gratuitous) {
 		if (ioctl(sock, SIOCGIFADDR, &ifr) == 0) {
 			sin = (struct sockaddr_in *) &ifr.ifr_addr;
 			ifaddr = sin->sin_addr.s_addr;
@@ -218,10 +221,7 @@ void arp_req(char *ifname, struct in_addr remaddr, struct in_addr myaddr, int gr
 	if (gratuitous)
 		memcpy(arp->arp_spa, &remaddr.s_addr, 4);
 	else
-		if (myaddr.s_addr == 0)
-			memcpy(arp->arp_spa, &ifaddr, 4);
-		else
-			memcpy(arp->arp_spa, &myaddr.s_addr, 4);
+		memcpy(arp->arp_spa, &ifaddr, 4);
 
 	arp->arp_op = htons(ARPOP_REQUEST);
 
@@ -446,7 +446,8 @@ void *arp(char *ifname)
 		/* Network filtering */
 		if (option_network_size >= 0) {
 			struct in_addr network;
-			network.s_addr = htonl(ntohl(sia.s_addr) & (0xffffffff << (32-option_network_size)));
+			uint32_t mask = option_network_size == 0 ? 0 : (0xffffffff << (32 - option_network_size));
+			network.s_addr = htonl(ntohl(sia.s_addr) & mask);
 			if (memcmp(&network, &option_network_number, sizeof(struct in_addr)) != 0)
 				continue;
 		}
