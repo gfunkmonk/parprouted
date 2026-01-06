@@ -648,7 +648,7 @@ void *main_thread(void *arg)
 		processarp(false);
 		pthread_mutex_unlock(&arptab_mutex);
 		usleep(SLEEPTIME);
-		if (!option_arpperm && time(NULL)-last_refresh > REFRESHTIME) {
+		if (!option_arpperm && !option_addressless && time(NULL)-last_refresh > REFRESHTIME) {
 			pthread_mutex_lock(&arptab_mutex);
 			if (debug)
 				printf("Refreshing ARP entries.\n");
