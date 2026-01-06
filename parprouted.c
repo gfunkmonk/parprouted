@@ -31,6 +31,7 @@ bool option_arpperm = false;
 bool sync_addresses = false;
 bool perform_shutdown = false;
 int exit_code = EXIT_SUCCESS;
+char *pidfile = NULL;
 
 pthread_t my_threads[MAX_IFACES+1];
 int last_thread_idx=-1;
@@ -555,6 +556,46 @@ void parseproc()
 	}
 }
 
+int write_pidfile(const char *pidfile_path)
+{
+	FILE *f;
+	
+	if (pidfile_path == NULL)
+		return 0;
+	
+	f = fopen(pidfile_path, "w");
+	if (f == NULL) {
+		syslog(LOG_ERR, "Unable to open pidfile %s: %s", pidfile_path, strerror(errno));
+		return -1;
+	}
+	
+	fprintf(f, "%d\n", getpid());
+	fclose(f);
+	
+	if (debug)
+		printf("PID file %s created with PID %d\n", pidfile_path, getpid());
+	
+	return 0;
+}
+
+void remove_pidfile(const char *pidfile_path)
+{
+	if (pidfile_path == NULL)
+		return;
+	
+	if (unlink(pidfile_path) < 0) {
+		if (errno != ENOENT)
+			syslog(LOG_WARNING, "Unable to remove pidfile %s: %s", pidfile_path, strerror(errno));
+	} else if (debug) {
+		printf("PID file %s removed\n", pidfile_path);
+	}
+}
+
+void cleanup_pidfile_atexit(void)
+{
+	remove_pidfile(pidfile);
+}
+
 void cleanup(void *arg)
 {
 	(void)arg; /* Unused parameter */
@@ -567,6 +608,7 @@ void cleanup(void *arg)
 	if (sync_addresses) {
 		process_ip_addr_sync(true);
 	}
+	remove_pidfile(pidfile);
 	syslog(LOG_INFO, "Terminating.");
 	exit(exit_code);
 }
@@ -635,10 +677,11 @@ int main (int argc, char **argv)
 		{ "foreground", 0, 0, 'f' },
 		{ "help", 0, 0, 0 },
 		{ "permanent", 0, 0, 'p' },
+		{ "pidfile", 1, 0, 'P' },
 		{ "sync", 0, 0, 's' },
 		{ NULL, 0, 0, 0 },
 	};
-	for (int ch; (ch = getopt_long(argc, argv, "dfhps", long_options, NULL)) != -1 && !help;) {
+	for (int ch; (ch = getopt_long(argc, argv, "dfhpP:s", long_options, NULL)) != -1 && !help;) {
 		switch (ch) {
 			case 'd':
 				debug = true;
@@ -648,6 +691,9 @@ int main (int argc, char **argv)
 				break;
 			case 'p':
 				option_arpperm = true;
+				break;
+			case 'P':
+				pidfile = optarg;
 				break;
 			case 's':
 				sync_addresses = true;
@@ -663,8 +709,13 @@ int main (int argc, char **argv)
 	if (help || last_iface_idx <= -1) {
 		printf("parprouted: proxy ARP routing daemon, version %s.\n", VERSION);
 		printf("(C) 2007 Vladimir Ivaschenko <vi@maks.net>, GPL2 license.\n");
-		printf("Usage: parprouted [--debug -d] [--foreground -f] [--permanent -p] [--sync -s] interfaces ...\n");
+		printf("Usage: parprouted [--debug -d] [--foreground -f] [--permanent -p] [--pidfile -P <file>] [--sync -s] interfaces ...\n");
 		exit(0);
+	}
+
+	/* Set default PID file location if not specified and not in foreground */
+	if (pidfile == NULL && !foreground) {
+		pidfile = DEFAULT_PIDFILE;
 	}
 
 	if (!foreground) {
@@ -700,6 +751,17 @@ int main (int argc, char **argv)
 
 	openlog(progname, LOG_PID | LOG_CONS | LOG_PERROR, LOG_DAEMON);
 	syslog(LOG_INFO, "Starting.");
+
+	/* Write PID file after daemonization */
+	if (write_pidfile(pidfile) < 0) {
+		syslog(LOG_ERR, "Failed to write PID file, exiting.");
+		exit(1);
+	}
+
+	/* Register cleanup handler to remove PID file on exit */
+	if (pidfile != NULL) {
+		atexit(cleanup_pidfile_atexit);
+	}
 
 	signal(SIGINT, sighandler);
 	signal(SIGTERM, sighandler);

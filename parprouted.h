@@ -29,6 +29,7 @@
 #define MAX_RQ_SIZE 64	/* maximum size of request queue */
 #define NTOP_BUFFER_PARAMS (char[INET_ADDRSTRLEN]){0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, INET_ADDRSTRLEN
 #define VERSION "1.0"
+#define DEFAULT_PIDFILE "/var/run/parprouted.pid"
 
 #include <sys/types.h>
 #include <errno.h>
@@ -67,6 +68,7 @@ extern bool verbose;
 extern bool perform_shutdown;
 extern bool option_arpperm;
 extern bool sync_addresses;
+extern char *pidfile;
 
 extern ARPTAB_ENTRY **arptab;
 extern pthread_mutex_t arptab_mutex;
