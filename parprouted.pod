@@ -7,7 +7,7 @@ B<parprouted> - Proxy ARP IP bridging daemon
 
 =head1 SYNOPSIS
 
-B<parprouted> [B<--addressless -a>] [B<--debug -d>] [B<--foreground -f>] [B<--permanent -p>] [B<--pidfile -P> I<file>] [B<--sync -s>] B<interface> [B<interface ...>]
+B<parprouted> [B<--addressless -a>] [B<--debug -d>] [B<--foreground -f>] [B<--gratuitous -g>] [B<--network -n> I<address/size>] [B<--permanent -p>] [B<--pidfile -P> I<file>] [B<--sync -s>] B<interface> [B<interface ...>]
 
 =head1 DESCRIPTION
 
@@ -68,6 +68,15 @@ as a daemon.
 
 B<-d>, which stands for debug. Extra debugging info is emitted to 
 stdout/stderr. This implies B<-f>.
+
+B<-g> or B<--gratuitous>, which enables sending gratuitous ARP announcements.
+When enabled, the daemon will send gratuitous ARP requests to all other 
+interfaces when it receives an ARP reply. This helps other hosts update their 
+ARP tables more quickly.
+
+B<-n> I<address/size> or B<--network> I<address/size>, which filters ARP 
+traffic by network. Only ARP packets from the specified network will be 
+processed. The network should be specified in CIDR notation (e.g., 192.168.1.0/24).
 
 B<-p>, which makes all ARP entries permanent. This will also result in that 
 ARP tables will not be refreshed by ARP pings.
