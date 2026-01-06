@@ -7,7 +7,7 @@ B<parprouted> - Proxy ARP IP bridging daemon
 
 =head1 SYNOPSIS
 
-B<parprouted> [B<--debug -d>] [B<--foreground -f>] [B<--permanent -p>] B<interface> [B<interface ...>]
+B<parprouted> [B<--debug -d>] [B<--foreground -f>] [B<--permanent -p>] [B<--pidfile -P> I<file>] [B<--sync -s>] B<interface> [B<interface ...>]
 
 =head1 DESCRIPTION
 
@@ -67,6 +67,14 @@ stdout/stderr. This implies B<-f>.
 
 B<-p>, which makes all ARP entries permanent. This will also result in that 
 ARP tables will not be refreshed by ARP pings.
+
+B<-P> I<file> or B<--pidfile> I<file>, which specifies the location of the PID file.
+When specified, the daemon will write its process ID to this file. If not specified,
+the default location I</var/run/parprouted.pid> is used when running as a daemon.
+No PID file is created when running in foreground mode (B<-f>) unless explicitly
+specified with B<-P>.
+
+B<-s> or B<--sync>, which enables IP address synchronization across interfaces.
 
 =head1 EXAMPLE
 
