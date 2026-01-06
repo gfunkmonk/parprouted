@@ -688,8 +688,9 @@ int main (int argc, char **argv)
 		switch (ch) {
 			case 'a':
 				option_addressless = true;
-				/* Addressless mode implies permanent ARP entries since we cannot 
-				 * refresh them without IP addresses on the interfaces */
+				/* Addressless mode implies permanent ARP entries because refreshing 
+				 * ARP entries requires sending ARP requests from a valid source IP 
+				 * address, which we don't have in addressless mode. */
 				option_arpperm = true;
 				break;
 			case 'd':

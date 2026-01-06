@@ -43,8 +43,9 @@ This daemon can be used for unicast traffic only. i.e., DHCP is not supported.
 Use software such as dhcprelay to "bridge" DHCP.
 
 You should have an IP address assigned on all of your interfaces that you do 
-bridging on. There is no need for this address to be from the same networks as 
-the bridged networks. Any dummy address will do.
+bridging on, unless you use addressless mode (B<-a>). There is no need for this 
+address to be from the same networks as the bridged networks. Any dummy address 
+will do.
 
 The system should have correct default route.
 
