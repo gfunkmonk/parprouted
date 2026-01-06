@@ -28,6 +28,7 @@ char *progname;
 bool debug = false;
 bool verbose = false;
 bool option_arpperm = false;
+bool option_addressless = false;
 bool sync_addresses = false;
 bool perform_shutdown = false;
 int exit_code = EXIT_SUCCESS;
@@ -494,8 +495,9 @@ void parseproc()
 			}
 			
 			/* if the IP address is marked as undiscovered and does not exist in arptab then
-			 * send an ARP request to all ifaces */
-			if (incomplete && !findentry(ipaddr)) {
+			 * send an ARP request to all ifaces. Skip this in addressless mode because
+			 * without IP addresses on the interfaces, we cannot properly send ARP requests. */
+			if (!option_addressless && incomplete && !findentry(ipaddr)) {
 				if (debug) {
 					printf("ARP entry %s(%s) is incomplete, requesting on all interfaces\n", ip, dev);
 				}
@@ -646,7 +648,7 @@ void *main_thread(void *arg)
 		processarp(false);
 		pthread_mutex_unlock(&arptab_mutex);
 		usleep(SLEEPTIME);
-		if (!option_arpperm && time(NULL)-last_refresh > REFRESHTIME) {
+		if (!option_arpperm && !option_addressless && time(NULL)-last_refresh > REFRESHTIME) {
 			pthread_mutex_lock(&arptab_mutex);
 			if (debug)
 				printf("Refreshing ARP entries.\n");
@@ -673,6 +675,7 @@ int main (int argc, char **argv)
 	progname = (char *) basename(argv[0]);
 
 	static struct option long_options[] = {
+		{ "addressless", 0, 0, 'a' },
 		{ "debug", 0, 0, 'd' },
 		{ "foreground", 0, 0, 'f' },
 		{ "help", 0, 0, 0 },
@@ -681,8 +684,15 @@ int main (int argc, char **argv)
 		{ "sync", 0, 0, 's' },
 		{ NULL, 0, 0, 0 },
 	};
-	for (int ch; (ch = getopt_long(argc, argv, "dfhpP:s", long_options, NULL)) != -1 && !help;) {
+	for (int ch; (ch = getopt_long(argc, argv, "adfhpP:s", long_options, NULL)) != -1 && !help;) {
 		switch (ch) {
+			case 'a':
+				option_addressless = true;
+				/* Addressless mode implies permanent ARP entries because refreshing 
+				 * ARP entries requires sending ARP requests from a valid source IP 
+				 * address, which we don't have in addressless mode. */
+				option_arpperm = true;
+				break;
 			case 'd':
 				debug = true;
 				// fall through
@@ -709,7 +719,7 @@ int main (int argc, char **argv)
 	if (help || last_iface_idx <= -1) {
 		printf("parprouted: proxy ARP routing daemon, version %s.\n", VERSION);
 		printf("(C) 2007 Vladimir Ivaschenko <vi@maks.net>, GPL2 license.\n");
-		printf("Usage: parprouted [--debug -d] [--foreground -f] [--permanent -p] [--pidfile -P <file>] [--sync -s] interfaces ...\n");
+		printf("Usage: parprouted [--addressless -a] [--debug -d] [--foreground -f] [--permanent -p] [--pidfile -P <file>] [--sync -s] interfaces ...\n");
 		exit(0);
 	}
 

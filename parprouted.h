@@ -67,6 +67,7 @@ extern bool debug;
 extern bool verbose;
 extern bool perform_shutdown;
 extern bool option_arpperm;
+extern bool option_addressless;
 extern bool sync_addresses;
 extern char *pidfile;
 

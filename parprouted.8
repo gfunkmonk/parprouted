@@ -64,7 +64,7 @@
 parprouted \- Proxy ARP IP bridging daemon
 .SH SYNOPSIS
 .IX Header "SYNOPSIS"
-\&\fBparprouted\fR [\fB\-\-debug \-d\fR] [\fB\-\-foreground \-f\fR] [\fB\-\-permanent \-p\fR] [\fB\-\-pidfile \-P\fR \fIfile\fR] [\fB\-\-sync \-s\fR] \fBinterface\fR [\fBinterface ...\fR]
+\&\fBparprouted\fR [\fB\-\-addressless \-a\fR] [\fB\-\-debug \-d\fR] [\fB\-\-foreground \-f\fR] [\fB\-\-permanent \-p\fR] [\fB\-\-pidfile \-P\fR \fIfile\fR] [\fB\-\-sync \-s\fR] \fBinterface\fR [\fBinterface ...\fR]
 .SH DESCRIPTION
 .IX Header "DESCRIPTION"
 parprouted is a daemon for transparent IP (Layer 3) proxy ARP bridging. 
@@ -98,8 +98,9 @@ This daemon can be used for unicast traffic only. i.e., DHCP is not supported.
 Use software such as dhcprelay to "bridge" DHCP.
 .PP
 You should have an IP address assigned on all of your interfaces that you do 
-bridging on. There is no need for this address to be from the same networks as 
-the bridged networks. Any dummy address will do.
+bridging on, unless you use addressless mode (\fB\-a\fR). There is no need for this 
+address to be from the same networks as the bridged networks. Any dummy address 
+will do.
 .PP
 The system should have correct default route.
 .PP
@@ -112,6 +113,9 @@ proc filesystem mounted in /proc because the daemon uses /proc/net/arp.
 The list of interfaces to do bridging on should be given via the command line.
 .PP
 The daemon accepts the following switches:
+.PP
+\&\fB\-a\fR or \fB\-\-addressless\fR, which enables addressless mode for use when bridged 
+interfaces have no IP addresses. This mode implies \fB\-p\fR (permanent ARP entries).
 .PP
 \&\fB\-f\fR, which stands for foreground. This option prevents running the program 
 as a daemon.
